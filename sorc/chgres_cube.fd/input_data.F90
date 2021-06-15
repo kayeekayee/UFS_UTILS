@@ -2588,7 +2588,7 @@
    if (localpet == 0) print*,"- FILE CONTAINS SPFH."
  endif
  
- if (localpet == 0) print*,"- FIND ICMR, SCLIWC, OR CICE IN FILE"
+ if (localpet == 0) print*,"- FIND ICMR, SCLIWC, CICE, OR CIMIXR IN FILE"
  iret = grb2_inq(the_file,inv_file,trac_names_grib_1(4),trac_names_grib_2(4),lvl_str_space)
 
  if (iret <= 0) then
@@ -2600,7 +2600,13 @@
    if (iret <= 0) then
      iret = grb2_inq(the_file,inv_file, ':var0_2','_6_0:',lvl_str_space)
      if (iret <= 0 ) then 
-       call handle_grib_error(vname, slevs(1),method,value,varnum,rc,var=dummy2d)
+       iret = grb2_inq(the_file,inv_file, ':var0_2','_1_82:',lvl_str_space)
+       if (iret <= 0 ) then
+         call handle_grib_error(vname, slevs(1),method,value,varnum,rc,var=dummy2d)
+       else
+         trac_names_grib_2(4) = '_1:82:'
+         if (localpet ==0) print*,"- FILE CONTAINS CIMIXR."
+       endif
      else
        trac_names_grib_2(4) = '_6_0'
        if (localpet == 0) print*,"- FILE CONTAINS CICE."
@@ -5017,6 +5023,10 @@ if (localpet == 0) then
      rc= grb2_inq(the_file, inv_file, vname,slev,'n=1106:',data2=dummy2d)
 
      if (rc <= 0) then
+       rc= grb2_inq(the_file, inv_file, ':var2_0_231:',slev,data2=dummy2d)
+     endif
+
+     if (rc <= 0) then
        rc= grb2_inq(the_file, inv_file, vname,slev,'n=1102:',data2=dummy2d)
        if (rc <= 0) then
          rc= grb2_inq(the_file, inv_file, vname,slev,'n=1152:',data2=dummy2d)
@@ -5043,6 +5053,11 @@ if (localpet == 0) then
 
      vname=":VEG:"
      rc= grb2_inq(the_file, inv_file, vname,slev,'n=1107:',data2=dummy2d)
+
+     if (rc <=0) then
+       rc= grb2_inq(the_file, inv_file, ':var2_0_232:',slev,data2=dummy2d)
+     endif
+
      if (rc <=0) then
        rc= grb2_inq(the_file, inv_file, vname,slev,'n=1103:',data2=dummy2d)
        if (rc <=0) then
@@ -5071,6 +5086,11 @@ if (localpet == 0) then
                loc=varnum)
      vname=":var0_7_198:"
      rc= grb2_inq(the_file, inv_file, vname,slev,':n=1108:',data2=dummy2d)
+
+     if (rc <=0) then
+       rc= grb2_inq(the_file, inv_file, ':LAI:',':surface:', data2=dummy2d)
+     endif
+
      if (rc <=0) then
        rc= grb2_inq(the_file, inv_file, vname,slev,':n=1104:',data2=dummy2d)
        if (rc <=0) then
