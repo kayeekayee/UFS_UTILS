@@ -27,7 +27,7 @@
                                     convert_nst, &
                                     orog_dir_input_grid, &
                                     orog_files_input_grid, &
-                                    tracers_input, num_tracers, &
+                                    tracers_input, num_tracers_input, &
                                     input_type, tracers, &
                                     get_var_cond, read_from_input, &
                                     geogrid_file_input_grid, &
@@ -56,8 +56,9 @@
  type(esmf_field), public              :: ps_input_grid         !< surface pressure
  type(esmf_field), public              :: terrain_input_grid    !< terrain height
  type(esmf_field), public              :: temp_input_grid       !< temperature
- type(esmf_field)                      :: u_input_grid          !< u/v wind at grid
- type(esmf_field)                      :: v_input_grid          !< box center
+
+ type(esmf_field), public              :: u_input_grid          !< u/v wind at grid
+ type(esmf_field), public              :: v_input_grid          !< box center
  type(esmf_field), public              :: wind_input_grid       !< 3-component wind
  type(esmf_field), allocatable, public :: tracers_input_grid(:) !< tracers
 
@@ -69,7 +70,8 @@
  integer, public                 :: veg_type_landice_input = 15 !< NOAH land ice option
                                                                 !< defined at this veg type.
                                                                 !< Default is igbp.
-
+ integer, parameter              :: ICET_DEFAULT = 265.0    !< Default value of soil and skin
+                                                            !< temperature (K) over ice.
  type(esmf_field), public        :: canopy_mc_input_grid    !< canopy moist content
  type(esmf_field), public        :: f10m_input_grid         !< log((z0+10)*1/z0)
  type(esmf_field), public        :: ffmm_input_grid         !< log((z0+z1)*1/z0)
@@ -131,6 +133,11 @@
  public :: cleanup_input_sfc_data
  public :: read_input_nst_data
  public :: cleanup_input_nst_data
+ public :: check_soilt
+ public :: check_cnwat
+ public :: quicksort
+ public :: convert_winds
+ public :: init_sfc_esmf_fields
  
  contains
 
@@ -378,6 +385,164 @@
 
  integer                         :: rc
 
+ call init_sfc_esmf_fields()
+
+!-------------------------------------------------------------------------------
+! Read the tiled 'warm' restart files.
+!-------------------------------------------------------------------------------
+
+ if (trim(input_type) == "restart") then
+
+   call read_input_sfc_restart_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the tiled or gaussian history files in netcdf format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "history" .or. trim(input_type) ==  &
+         "gaussian_netcdf") then
+
+   call read_input_sfc_netcdf_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the gaussian history files in nemsio format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "gaussian_nemsio") then
+
+   call read_input_sfc_gaussian_nemsio_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the spectral gfs gaussian history files in nemsio format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "gfs_gaussian_nemsio") then
+
+   call read_input_sfc_gfs_gaussian_nemsio_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the spectral gfs gaussian history files in sfcio format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "gfs_sigio") then
+
+   call read_input_sfc_gfs_sfcio_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read fv3gfs surface data in grib2 format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "grib2") then
+
+   call read_input_sfc_grib2_file(localpet)
+
+ endif
+
+ end subroutine read_input_sfc_data
+
+!> Create atmospheric esmf fields.
+!!
+!! @author George Gayno NCEP/EMC   
+ subroutine init_atm_esmf_fields
+ 
+ implicit none
+
+ integer                                  :: i, rc
+
+ print*,"- INITIALIZE ATMOSPHERIC ESMF FIELDS."
+
+ print*,"- CALL FieldCreate FOR INPUT GRID 3-D WIND."
+ wind_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1,1/), &
+                                   ungriddedUBound=(/lev_input,3/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID SURFACE PRESSURE."
+ ps_input_grid = ESMF_FieldCreate(input_grid, &
+                                  typekind=ESMF_TYPEKIND_R8, &
+                                  staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID TERRAIN."
+ terrain_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID TEMPERATURE."
+ temp_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ allocate(tracers_input_grid(num_tracers_input))
+
+ do i = 1, num_tracers_input
+   print*,"- CALL FieldCreate FOR INPUT GRID TRACER ", trim(tracers_input(i))
+   tracers_input_grid(i) = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+   if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+     call error_handler("IN FieldCreate", rc)
+ enddo
+
+ print*,"- CALL FieldCreate FOR INPUT GRID DZDT."
+ dzdt_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID U."
+ u_input_grid = ESMF_FieldCreate(input_grid, &
+                                 typekind=ESMF_TYPEKIND_R8, &
+                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                 ungriddedLBound=(/1/), &
+                                 ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID V."
+ v_input_grid = ESMF_FieldCreate(input_grid, &
+                                 typekind=ESMF_TYPEKIND_R8, &
+                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                 ungriddedLBound=(/1/), &
+                                 ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID PRESSURE."
+ pres_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+ 
+ end subroutine init_atm_esmf_fields
+
+!> Create surface input grid esmf fields
+!!
+!! @author George Gayno NCEP/EMC 
+ subroutine init_sfc_esmf_fields
+ 
+ implicit none
+
+ integer                         :: rc
+
  print*,"- CALL FieldCreate FOR INPUT GRID LANDSEA MASK."
  landsea_mask_input_grid = ESMF_FieldCreate(input_grid, &
                                      typekind=ESMF_TYPEKIND_R8, &
@@ -573,153 +738,7 @@
    if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__))&
     call error_handler("IN FieldCreate", rc)
  endif
-
-!-------------------------------------------------------------------------------
-! Read the tiled 'warm' restart files.
-!-------------------------------------------------------------------------------
-
- if (trim(input_type) == "restart") then
-
-   call read_input_sfc_restart_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the tiled or gaussian history files in netcdf format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "history" .or. trim(input_type) ==  &
-         "gaussian_netcdf") then
-
-   call read_input_sfc_netcdf_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the gaussian history files in nemsio format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "gaussian_nemsio") then
-
-   call read_input_sfc_gaussian_nemsio_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the spectral gfs gaussian history files in nemsio format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "gfs_gaussian_nemsio") then
-
-   call read_input_sfc_gfs_gaussian_nemsio_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the spectral gfs gaussian history files in sfcio format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "gfs_sigio") then
-
-   call read_input_sfc_gfs_sfcio_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read fv3gfs surface data in grib2 format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "grib2") then
-
-   call read_input_sfc_grib2_file(localpet)
-
- endif
-
- end subroutine read_input_sfc_data
-
-!> Create atmospheric esmf fields.
-!!
-!! @author George Gayno NCEP/EMC   
- subroutine init_atm_esmf_fields
- 
- implicit none
-
- integer                                  :: i, rc
-
- print*,"- INITIALIZE ATMOSPHERIC ESMF FIELDS."
-
- print*,"- CALL FieldCreate FOR INPUT GRID 3-D WIND."
- wind_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1,1/), &
-                                   ungriddedUBound=(/lev_input,3/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID SURFACE PRESSURE."
- ps_input_grid = ESMF_FieldCreate(input_grid, &
-                                  typekind=ESMF_TYPEKIND_R8, &
-                                  staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID TERRAIN."
- terrain_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID TEMPERATURE."
- temp_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- allocate(tracers_input_grid(num_tracers))
-
- do i = 1, num_tracers
-   print*,"- CALL FieldCreate FOR INPUT GRID TRACER ", trim(tracers_input(i))
-   tracers_input_grid(i) = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
-   if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-     call error_handler("IN FieldCreate", rc)
- enddo
-
- print*,"- CALL FieldCreate FOR INPUT GRID DZDT."
- dzdt_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID U."
- u_input_grid = ESMF_FieldCreate(input_grid, &
-                                 typekind=ESMF_TYPEKIND_R8, &
-                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                 ungriddedLBound=(/1/), &
-                                 ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID V."
- v_input_grid = ESMF_FieldCreate(input_grid, &
-                                 typekind=ESMF_TYPEKIND_R8, &
-                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                 ungriddedLBound=(/1/), &
-                                 ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID PRESSURE."
- pres_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
- 
- end subroutine init_atm_esmf_fields
+ end subroutine init_sfc_esmf_fields
 
 !> Read input atmospheric data from spectral gfs (old sigio format).
 !! 
@@ -769,7 +788,7 @@
  lev_input = sighead%levs
  levp1_input = lev_input + 1
 
- if (num_tracers /= sighead%ntrac) then
+ if (num_tracers_input /= sighead%ntrac) then
    call error_handler("WRONG NUMBER OF TRACERS EXPECTED.", 99)
  endif
 
@@ -831,7 +850,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldScatter", rc)
 
- do k = 1, num_tracers
+ do k = 1, num_tracers_input
 
    if (localpet == 0) then
      call sptezm(0,sighead%jcap,4,i_input, j_input, lev_input, sigdata%q(:,:,k), dummy3d, 1)
@@ -1046,7 +1065,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
      call error_handler("IN FieldScatter", rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet == 0) then
      print*,"- READ ", trim(tracers_input(n))
@@ -1308,7 +1327,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldScatter", rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet == 0) then
      print*,"- READ ", trim(tracers_input(n))
@@ -1680,7 +1699,7 @@
    call netcdf_err(error, 'opening: '//trim(tilefile) )
  endif
 
- do i = 1, num_tracers
+ do i = 1, num_tracers_input
 
    if (localpet < num_tiles_input_grid) then
      error=nf90_inq_varid(ncid, tracers_input(i), id_var)
@@ -2000,7 +2019,7 @@
 
 ! tracers
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (myrank <= max_procs-1) then
      error=nf90_inq_varid(ncid, tracers_input(n), id_var)
@@ -2206,7 +2225,7 @@
  error = nf90_close(ncid)
 
  print*,'- FILE HAS ', num_tracers_file, ' TRACERS.'
- print*,'- WILL PROCESS ', num_tracers, ' TRACERS.'
+ print*,'- WILL PROCESS ', num_tracers_input, ' TRACERS.'
 
 !---------------------------------------------------------------------------
 ! Initialize esmf atmospheric fields.
@@ -2259,7 +2278,7 @@
       call error_handler("IN FieldScatter", rc)
  enddo
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet < num_tiles_input_grid) then
      print*,"- READ ", trim(tracers_input(n))
@@ -2452,10 +2471,10 @@
                                           trac_names_grib_1(ntrac_max), &
                                           trac_names_grib_2(ntrac_max), &
                                           trac_names_vmap(ntrac_max), &
-                                          tracers_input_grib_1(num_tracers), &
-                                          tracers_input_grib_2(num_tracers), &
+                                          tracers_input_grib_1(num_tracers_input), &
+                                          tracers_input_grib_2(num_tracers_input), &
                                           tmpstr, & 
-                                          method, tracers_input_vmap(num_tracers), &
+                                          method, tracers_input_vmap(num_tracers_input), &
                                           tracers_default(ntrac_max), vname2
  character (len=500)                   :: metadata
 
@@ -2640,7 +2659,8 @@
    if (localpet == 0) print*,"- FILE CONTAINS CLWMR."
  endif
    
- do n = 1, num_tracers
+ print*,"- COUNT NUMBER OF TRACERS TO BE READ IN BASED ON PHYSICS SUITE TABLE"
+ do n = 1, num_tracers_input
 
    vname = tracers_input(n)
 
@@ -2653,7 +2673,9 @@
 
  enddo
 
- if (localpet==0) print*, "- NUMBER OF TRACERS TO BE PROCESSED = ", num_tracers
+ if (localpet==0) then
+    print*, "- NUMBER OF TRACERS IN THE INPUT FILE = ", num_tracers_input
+ endif
 
 !---------------------------------------------------------------------------
 ! Initialize esmf atmospheric fields.
@@ -2695,7 +2717,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldScatter", rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet == 0) print*,"- READ ", trim(tracers_input_vmap(n))
    vname = tracers_input_vmap(n)
@@ -2869,8 +2891,8 @@ if (.not. isnative) then
    if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldGet", rc)
  
-    if (localpet == 0) print*,"- CALL FieldGet FOR TRACERS."
-    do n=1,num_tracers
+  if (localpet == 0) print*,"- CALL FieldGet FOR TRACERS."
+  do n=1,num_tracers_input
     nullify(qptr)
     call ESMF_FieldGet(tracers_input_grid(n), &
             farrayPtr=qptr, rc=rc)
@@ -4603,15 +4625,14 @@ else
  
    integer                               :: rc, varnum, iret, i, j,k
    integer                               :: ncid2d, varid, varsize
-   integer, parameter                    :: icet_default = 265.0
 
    logical                               :: exist, rap_latlon
 
    real(esmf_kind_r4)                    :: value
 
-   real(esmf_kind_r4), allocatable       :: dummy2d(:,:),tsk_save(:,:),icec_save(:,:)
+   real(esmf_kind_r4), allocatable       :: dummy2d(:,:),icec_save(:,:)
    real(esmf_kind_r4), allocatable       :: dummy1d(:)
-   real(esmf_kind_r8), allocatable       :: dummy2d_8(:,:),dummy2d_82(:,:)
+   real(esmf_kind_r8), allocatable       :: dummy2d_8(:,:),dummy2d_82(:,:),tsk_save(:,:)
    real(esmf_kind_r8), allocatable       :: dummy3d(:,:,:), dummy3d_stype(:,:,:)
    integer(esmf_kind_i4), allocatable    :: slmsk_save(:,:)
    integer(esmf_kind_i8), allocatable    :: dummy2d_i(:,:)
@@ -4840,7 +4861,7 @@ if (localpet == 0) then
    print*,"- READ SKIN TEMPERATURE."
    rc = grb2_inq(the_file, inv_file, ':TMP:',':surface:', data2=dummy2d)
    if (rc <= 0 ) call error_handler("READING SKIN TEMPERATURE.", rc)
-   tsk_save(:,:) = dummy2d
+   tsk_save(:,:) = real(dummy2d,esmf_kind_r8)
    dummy2d_8 = real(dummy2d,esmf_kind_r8)
    do j = 1, j_input
      do i = 1, i_input
@@ -5256,6 +5277,7 @@ if (localpet == 0) then
         dummy2d(:,:) = 0.0_esmf_kind_r4
       endif
     endif
+   call check_cnwat(dummy2d)
    dummy2d_8= real(dummy2d,esmf_kind_r8)
    print*,'cnwat ',maxval(dummy2d),minval(dummy2d)
  endif
@@ -5410,14 +5432,7 @@ if (localpet == 0) then
    vname = "soilt"
    vname_file = ":TSOIL:"
    call read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
-   do k=1,lsoil_input
-     do j = 1, j_input
-       do i = 1, i_input
-         if (slmsk_save(i,j) == 0_esmf_kind_i4 ) dummy3d(i,j,k) = tsk_save(i,j)
-         if (slmsk_save(i,j) == 2_esmf_kind_i4 ) dummy3d(i,j,k) = icet_default
-       enddo
-     enddo
-   enddo
+   call check_soilt(dummy3d,slmsk_save,tsk_save)
    print*,'soilt ',maxval(dummy3d),minval(dummy3d)
 
    deallocate(tsk_save, slmsk_save)
@@ -6065,11 +6080,11 @@ if (localpet == 0) then
  real(esmf_kind_r8)                      :: d2r
 
  integer                                 :: varnum_u, varnum_v, vlev, & !ncid, id_var, &
-                                            error, iret, i,istr
+                                            error, iret, istr
 
  character(len=20)                       :: vname
  character(len=50)                       :: method_u, method_v
- character(len=250)                      :: file_coord, cmdline_msg
+ character(len=250)                      :: file_coord
  character(len=10000)                    :: temp_msg
 
  d2r=acos(-1.0_esmf_kind_r8) / 180.0_esmf_kind_r8
@@ -6508,7 +6523,7 @@ subroutine read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
  call ESMF_FieldDestroy(wind_input_grid, rc=rc)
  call ESMF_FieldDestroy(ps_input_grid, rc=rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
    call ESMF_FieldDestroy(tracers_input_grid(n), rc=rc)
  enddo
  deallocate(tracers_input_grid)
@@ -6626,5 +6641,64 @@ recursive subroutine quicksort(a, first, last)
   if (first < i-1) call quicksort(a, first, i-1)
   if (j+1 < last)  call quicksort(a, j+1, last)
 end subroutine quicksort
+
+!> Check for and replace certain values in soil temperature.
+!> At open water points (landmask=0) use skin temperature as
+!> a filler value. At land points (landmask=1) with excessive
+!> soil temperature, replace soil temperature with skin temperature. 
+!> In GEFSv12.0 data there are some erroneous missing values at
+!> land points which this corrects. At sea ice points (landmask=2),
+!> store a default ice column temperature because grib2 files do not 
+!> have ice column temperature which FV3 expects at these points.
+!!
+!! @param soilt    [inout] 3-dimensional soil temperature arrray
+!! @param landmask [in]    landmask of the input grid
+!! @param skint    [in]    2-dimensional skin temperature array
+!! @author Larissa Reames CIMMS/NSSL
+
+subroutine check_soilt(soilt, landmask, skint)
+  implicit none
+  real(esmf_kind_r8), intent(inout) ::  soilt(i_input,j_input,lsoil_input)
+  real(esmf_kind_r8), intent(in)    ::  skint(i_input,j_input)
+  integer(esmf_kind_i4), intent(in)    ::  landmask(i_input,j_input)
+  
+  integer                           :: i, j, k
+
+  do k=1,lsoil_input
+    do j = 1, j_input
+      do i = 1, i_input
+        if (landmask(i,j) == 0_esmf_kind_i4 ) then 
+          soilt(i,j,k) = skint(i,j)
+        else if (landmask(i,j) == 1_esmf_kind_i4 .and. soilt(i,j,k) > 350.0_esmf_kind_r8) then 
+          soilt(i,j,k) = skint(i,j)
+        else if (landmask(i,j) == 2_esmf_kind_i4 ) then 
+          soilt(i,j,k) = ICET_DEFAULT
+        endif
+      enddo
+    enddo
+  enddo
+end subroutine check_soilt
+
+!> When using GEFS data, some points on the target grid have 
+!> unreasonable canpy moisture content, so zero out any 
+!> locations with unrealistic canopy moisture values (>0.5).
+!!
+!! @param cnwat [input] 2-dimensional canopy moisture content
+!! @author Larissa Reames CIMMS/NSSL
+
+subroutine check_cnwat(cnwat)
+  implicit none 
+  real(esmf_kind_r4), intent(inout) :: cnwat(i_input,j_input)
+  
+  real(esmf_kind_r4)                :: max_cnwat = 0.5
+  
+  integer :: i, j
+
+  do i = 1,i_input
+    do j = 1,j_input
+      if (cnwat(i,j) .gt. max_cnwat) cnwat(i,j) = 0.0_esmf_kind_r4
+    enddo
+  enddo
+end subroutine check_cnwat
 
  end module input_data
