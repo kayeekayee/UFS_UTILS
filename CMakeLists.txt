@@ -14,6 +14,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # User options.
 option(OPENMP "use OpenMP threading" ON)
+option(ENABLE_DOCS "Enable generation of doxygen-based documentation." OFF)
 
 if(NOT CMAKE_BUILD_TYPE MATCHES "^(Debug|Release|RelWithDebInfo|MinSizeRel)$")
   message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -22,6 +23,8 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "^(Debug|Release|RelWithDebInfo|MinSizeRel)$")
       CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
+  message(STATUS "Set BUILD_TESTING to YES and build unit testing package under tests")
+  set(BUILD_TESTING "YES")
 endif()
 
 # Set compiler flags.
@@ -32,7 +35,7 @@ if(CMAKE_Fortran_COMPILER_ID MATCHES "^(Intel)$")
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES "^(GNU)$")
   set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -g -fbacktrace")
   set(CMAKE_Fortran_FLAGS_RELEASE "-O3")
-  set(CMAKE_Fortran_FLAGS_DEBUG "-O0 -ggdb -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans -ffpe-trap=invalid,zero,overflow -fbounds-check")
+  set(CMAKE_Fortran_FLAGS_DEBUG "-O1 -ggdb -fno-unsafe-math-optimizations -frounding-math -fsignaling-nans -ffpe-trap=invalid,zero,overflow -fbounds-check -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls")
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "^(Intel)$")
@@ -42,27 +45,24 @@ if(CMAKE_C_COMPILER_ID MATCHES "^(Intel)$")
 endif()
 
 # Find packages.
-find_package(NetCDF REQUIRED C Fortran)
-find_package(MPI REQUIRED)
-find_package(ESMF MODULE REQUIRED)
+find_package(NetCDF 4.3.3 REQUIRED C Fortran)
+find_package(MPI REQUIRED C Fortran)
+find_package(ESMF 8.0.0 REQUIRED)
 
 if(OPENMP)
   find_package(OpenMP REQUIRED COMPONENTS Fortran)
 endif()
 
-find_package(gfsio REQUIRED)
-find_package(sfcio REQUIRED)
-find_package(w3nco REQUIRED)
-find_package(landsfcutil REQUIRED)
-find_package(bacio REQUIRED)
-find_package(nemsio REQUIRED)
-find_package(nemsiogfs REQUIRED)
-find_package(sigio REQUIRED)
-find_package(sp REQUIRED)
-find_package(ip REQUIRED)
-find_package(w3emc REQUIRED)
-find_package(g2 REQUIRED)
-find_package(wgrib2 REQUIRED)
+find_package(sfcio 1.4.0 REQUIRED)
+find_package(w3nco 2.4.0 REQUIRED)
+find_package(bacio 2.4.0 REQUIRED)
+find_package(nemsio 2.5.0 REQUIRED)
+find_package(sigio 2.3.0 REQUIRED)
+find_package(sp 2.3.3 REQUIRED)
+find_package(ip 3.3.3 REQUIRED)
+find_package(g2 3.4.0 REQUIRED)
+find_package(wgrib2 2.0.8 REQUIRED)
+find_package(sigio 2.3.0 REQUIRED)
 
 # EMC requires executables in ./exec
 set(exec_dir bin)
@@ -70,10 +70,20 @@ if(EMC_EXEC_DIR)
   set(exec_dir exec)
 endif()
 
-add_subdirectory(sorc)
-
-# If doxygen documentation we enabled, build it.
+# If doxygen documentation we enabled, build it. This must come before
+# adding the source code directories; the main documentation build
+# must happen before any of the utility document builds.
 if(ENABLE_DOCS)
   find_package(Doxygen REQUIRED)
+  set(abs_top_srcdir "${CMAKE_SOURCE_DIR}")
   add_subdirectory(docs)  
 endif()
+
+add_subdirectory(sorc)
+
+# Run unit tests.
+include(CTest)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
+
