@@ -1,27 +1,17 @@
- module input_data
+!> @file
+!! @brief Read atmospheric and surface data from GRIB2, NEMSIO and NetCDF files.
+!! @author George Gayno NCEP/EMC
 
-!--------------------------------------------------------------------------
-! Module input_data
-!
-! Abstract: Read atmospheric, surface and nst data on the input grid.
-!    Supported formats include fv3 tiled 'restart' files, fv3 tiled 
-!    'history' files, fv3 gaussian history files, spectral gfs
-!    gaussian nemsio files, and spectral gfs sigio/sfcio files.
-!
-! Public Subroutines:
-! -----------------
-! read_input_atm_data         Driver routine to read atmospheric data
-! cleanup_input_atm_data      Free up memory associated with atm data
-! read_input_sfc_data         Driver routine to read surface data
-! cleanup_input_sfc_data      Free up memory associated with sfc data
-! read_input_nst_data         Driver routine to read nst data
-! cleanup_input_nst_data      Free up memory associated with nst data
-!
-! Public variables:
-! -----------------
-! Defined below.  "input" indicates field associated with the input grid.
-!
-!--------------------------------------------------------------------------
+!> Read atmospheric, surface and nst data on the input grid.
+!! Supported formats include fv3 tiled 'restart' files, fv3 tiled 
+!! 'history' files, fv3 gaussian history files, spectral gfs
+!! gaussian nemsio files, and spectral gfs sigio/sfcio files.
+!!
+!! Public variables are defined below: "input" indicates field
+!! associated with the input grid.
+!!
+!! @author George Gayno NCEP/EMC
+ module input_data
 
  use esmf
  use netcdf
@@ -37,7 +27,7 @@
                                     convert_nst, &
                                     orog_dir_input_grid, &
                                     orog_files_input_grid, &
-                                    tracers_input, num_tracers, &
+                                    tracers_input, num_tracers_input, &
                                     input_type, tracers, &
                                     get_var_cond, read_from_input, &
                                     geogrid_file_input_grid, &
@@ -52,7 +42,7 @@
                                     num_tiles_input_grid, &
                                     latitude_input_grid, &
                                     longitude_input_grid, &
-                                    inv_file!, the_file_hrrr
+                                    inv_file
 
  implicit none
 
@@ -60,79 +50,82 @@
 
 ! Fields associated with the atmospheric model.
 
- type(esmf_field), public              :: dzdt_input_grid       ! vert velocity
- type(esmf_field)                      :: dpres_input_grid      ! pressure thickness
- type(esmf_field), public              :: pres_input_grid       ! 3-d pressure
- type(esmf_field), public              :: ps_input_grid         ! surface pressure
- type(esmf_field), public              :: terrain_input_grid    ! terrain height
- type(esmf_field), public              :: temp_input_grid       ! temperature
- type(esmf_field)                      :: u_input_grid          ! u/v wind at grid
- type(esmf_field)                      :: v_input_grid          ! box center
- type(esmf_field), public              :: wind_input_grid       ! 3-component wind
- type(esmf_field), allocatable, public :: tracers_input_grid(:) ! tracers
+ type(esmf_field), public              :: dzdt_input_grid       !< vert velocity
+ type(esmf_field)                      :: dpres_input_grid      !< pressure thickness
+ type(esmf_field), public              :: pres_input_grid       !< 3-d pressure
+ type(esmf_field), public              :: ps_input_grid         !< surface pressure
+ type(esmf_field), public              :: terrain_input_grid    !< terrain height
+ type(esmf_field), public              :: temp_input_grid       !< temperature
 
- integer, public                 :: lev_input      ! # of atmospheric layers
- integer, public                 :: levp1_input    ! # of atmos layer interfaces
+ type(esmf_field), public              :: u_input_grid          !< u/v wind at grid
+ type(esmf_field), public              :: v_input_grid          !< box center
+ type(esmf_field), public              :: wind_input_grid       !< 3-component wind
+ type(esmf_field), allocatable, public :: tracers_input_grid(:) !< tracers
+
+ integer, public                 :: lev_input      !< number of atmospheric layers
+ integer, public                 :: levp1_input    !< number of atmos layer interfaces
 
 ! Fields associated with the land-surface model.
 
- integer, public                 :: veg_type_landice_input = 15 ! NOAH land ice option
-                                                                ! defined at this veg type.
-                                                                ! Default is igbp.
+ integer, public                 :: veg_type_landice_input = 15 !< NOAH land ice option
+                                                                !< defined at this veg type.
+                                                                !< Default is igbp.
+ integer, parameter              :: ICET_DEFAULT = 265.0    !< Default value of soil and skin
+                                                            !< temperature (K) over ice.
+ type(esmf_field), public        :: canopy_mc_input_grid    !< canopy moist content
+ type(esmf_field), public        :: f10m_input_grid         !< log((z0+10)*1/z0)
+ type(esmf_field), public        :: ffmm_input_grid         !< log((z0+z1)*1/z0)
+                                                            !! See sfc_diff.f for details.
+ type(esmf_field), public        :: landsea_mask_input_grid !< land sea mask;
+                                                            !! 0-water, 1-land, 2-ice
+ type(esmf_field), public        :: q2m_input_grid          !< 2-m spec hum
+ type(esmf_field), public        :: seaice_depth_input_grid !< sea ice depth
+ type(esmf_field), public        :: seaice_fract_input_grid !< sea ice fraction
+ type(esmf_field), public        :: seaice_skin_temp_input_grid  !< sea ice skin temp
+ type(esmf_field), public        :: skin_temp_input_grid    !< skin temp/sst
+ type(esmf_field), public        :: snow_depth_input_grid   !< snow dpeth
+ type(esmf_field), public        :: snow_liq_equiv_input_grid !< snow liq equiv depth
+ type(esmf_field), public        :: soil_temp_input_grid    !< 3-d soil temp
+ type(esmf_field), public        :: soil_type_input_grid    !< soil type
+ type(esmf_field), public        :: soilm_liq_input_grid    !< 3-d liquid soil moisture
+ type(esmf_field), public        :: soilm_tot_input_grid    !< 3-d total soil moisture
+ type(esmf_field), public        :: srflag_input_grid       !< snow/rain flag
+ type(esmf_field), public        :: t2m_input_grid          !< 2-m temperature
+ type(esmf_field), public        :: tprcp_input_grid        !< precip
+ type(esmf_field), public        :: ustar_input_grid        !< fric velocity
+ type(esmf_field), public        :: veg_type_input_grid     !< vegetation type
+ type(esmf_field), public        :: z0_input_grid           !< roughness length
+ type(esmf_field), public        :: veg_greenness_input_grid !< vegetation fraction
+ type(esmf_field), public        :: lai_input_grid          !< leaf area index
+ type(esmf_field), public        :: max_veg_greenness_input_grid !< shdmax
+ type(esmf_field), public        :: min_veg_greenness_input_grid !< shdmin
 
- type(esmf_field), public        :: canopy_mc_input_grid    ! canopy moist content
- type(esmf_field), public        :: f10m_input_grid         ! log((z0+10)*1/z0)
- type(esmf_field), public        :: ffmm_input_grid         ! log((z0+z1)*1/z0)
-                                                            ! See sfc_diff.f for details.
- type(esmf_field), public        :: landsea_mask_input_grid ! land sea mask;
-                                                            ! 0-water, 1-land, 2-ice
- type(esmf_field), public        :: q2m_input_grid          ! 2-m spec hum
- type(esmf_field), public        :: seaice_depth_input_grid ! sea ice depth
- type(esmf_field), public        :: seaice_fract_input_grid ! sea ice fraction
- type(esmf_field), public        :: seaice_skin_temp_input_grid  ! sea ice skin temp
- type(esmf_field), public        :: skin_temp_input_grid    ! skin temp/sst
- type(esmf_field), public        :: snow_depth_input_grid   ! snow dpeth
- type(esmf_field), public        :: snow_liq_equiv_input_grid ! snow liq equiv depth
- type(esmf_field), public        :: soil_temp_input_grid    ! 3-d soil temp
- type(esmf_field), public        :: soil_type_input_grid    ! soil type
- type(esmf_field), public        :: soilm_liq_input_grid    ! 3-d liquid soil moisture
- type(esmf_field), public        :: soilm_tot_input_grid    ! 3-d total soil moisture
- type(esmf_field), public        :: srflag_input_grid       ! snow/rain flag
- type(esmf_field), public        :: t2m_input_grid          ! 2-m temperature
- type(esmf_field), public        :: tprcp_input_grid        ! precip
- type(esmf_field), public        :: ustar_input_grid        ! fric velocity
- type(esmf_field), public        :: veg_type_input_grid     ! vegetation type
- type(esmf_field), public        :: z0_input_grid           ! roughness length
- type(esmf_field), public        :: veg_greenness_input_grid ! vegetation fraction
- type(esmf_field), public        :: lai_input_grid          ! leaf area index
- type(esmf_field), public        :: max_veg_greenness_input_grid ! shdmax
- type(esmf_field), public        :: min_veg_greenness_input_grid ! shdmin
-
- integer, public      :: lsoil_input=4  ! # of soil layers, no longer hardwired to allow
-                                        ! # for 7 layers of soil for the RUC LSM
+ integer, public      :: lsoil_input=4  !< number of soil layers, no longer hardwired to allow
+                                        !! for 7 layers of soil for the RUC LSM
  
- character(len=50), private, allocatable :: slevs(:)                           
+ character(len=50), private, allocatable :: slevs(:) !< The atmospheric levels in the GRIB2 input file.
 
 ! Fields associated with the nst model.
 
- type(esmf_field), public        :: c_d_input_grid
- type(esmf_field), public        :: c_0_input_grid
- type(esmf_field), public        :: d_conv_input_grid
- type(esmf_field), public        :: dt_cool_input_grid
- type(esmf_field), public        :: ifd_input_grid
- type(esmf_field), public        :: qrain_input_grid
- type(esmf_field), public        :: tref_input_grid  ! reference temperature
- type(esmf_field), public        :: w_d_input_grid
- type(esmf_field), public        :: w_0_input_grid
- type(esmf_field), public        :: xs_input_grid
- type(esmf_field), public        :: xt_input_grid
- type(esmf_field), public        :: xu_input_grid
- type(esmf_field), public        :: xv_input_grid
- type(esmf_field), public        :: xz_input_grid
- type(esmf_field), public        :: xtts_input_grid
- type(esmf_field), public        :: xzts_input_grid
- type(esmf_field), public        :: z_c_input_grid
- type(esmf_field), public        :: zm_input_grid
+ type(esmf_field), public        :: c_d_input_grid   !< Coefficient 2 to calculate d(tz)/d(ts)
+ type(esmf_field), public        :: c_0_input_grid   !< Coefficient 1 to calculate d(tz)/d(ts)
+ type(esmf_field), public        :: d_conv_input_grid   !< Thickness of free convection layer
+ type(esmf_field), public        :: dt_cool_input_grid   !< Sub-layer cooling amount
+ type(esmf_field), public        :: ifd_input_grid   !< Model mode index. 0-diurnal model not
+                                                     !< started; 1-diurnal model started.
+ type(esmf_field), public        :: qrain_input_grid   !< Sensible heat flux due to rainfall
+ type(esmf_field), public        :: tref_input_grid  !< Reference temperature
+ type(esmf_field), public        :: w_d_input_grid   !< Coefficient 4 to calculate d(tz)/d(ts)
+ type(esmf_field), public        :: w_0_input_grid   !< Coefficient 3 to calculate d(tz)/d(ts)
+ type(esmf_field), public        :: xs_input_grid   !< Salinity content in diurnal thermocline layer
+ type(esmf_field), public        :: xt_input_grid   !< Heat content in diurnal thermocline layer
+ type(esmf_field), public        :: xu_input_grid   !< u-current content in diurnal thermocline layer
+ type(esmf_field), public        :: xv_input_grid   !< v-current content in diurnal thermocline layer
+ type(esmf_field), public        :: xz_input_grid   !< Diurnal thermocline layer thickness
+ type(esmf_field), public        :: xtts_input_grid   !< d(xt)/d(ts)
+ type(esmf_field), public        :: xzts_input_grid   !< d(xz)/d(ts)
+ type(esmf_field), public        :: z_c_input_grid   !< Sub-layer cooling thickness
+ type(esmf_field), public        :: zm_input_grid   !< Oceanic mixed layer depth
 
  public :: read_input_atm_data
  public :: cleanup_input_atm_data
@@ -140,13 +133,18 @@
  public :: cleanup_input_sfc_data
  public :: read_input_nst_data
  public :: cleanup_input_nst_data
+ public :: check_soilt
+ public :: check_cnwat
+ public :: quicksort
+ public :: convert_winds
+ public :: init_sfc_esmf_fields
  
  contains
 
-!---------------------------------------------------------------------------
-! Read input grid atmospheric data driver
-!---------------------------------------------------------------------------
-
+!> Read input grid atmospheric data driver.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_data(localpet)
 
  implicit none
@@ -213,10 +211,10 @@
 
  end subroutine read_input_atm_data
 
-!---------------------------------------------------------------------------
-! Read input grid nst data driver
-!---------------------------------------------------------------------------
-
+!> Driver to read input grid nst data.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_nst_data(localpet)
 
  implicit none
@@ -375,15 +373,173 @@
 
  end subroutine read_input_nst_data
 
-!---------------------------------------------------------------------------
-! Read input grid surface data driver.
-!---------------------------------------------------------------------------
-
+!> Driver to read input grid surface data.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_sfc_data(localpet)
 
  implicit none
 
  integer, intent(in)             :: localpet
+
+ integer                         :: rc
+
+ call init_sfc_esmf_fields()
+
+!-------------------------------------------------------------------------------
+! Read the tiled 'warm' restart files.
+!-------------------------------------------------------------------------------
+
+ if (trim(input_type) == "restart") then
+
+   call read_input_sfc_restart_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the tiled or gaussian history files in netcdf format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "history" .or. trim(input_type) ==  &
+         "gaussian_netcdf") then
+
+   call read_input_sfc_netcdf_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the gaussian history files in nemsio format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "gaussian_nemsio") then
+
+   call read_input_sfc_gaussian_nemsio_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the spectral gfs gaussian history files in nemsio format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "gfs_gaussian_nemsio") then
+
+   call read_input_sfc_gfs_gaussian_nemsio_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read the spectral gfs gaussian history files in sfcio format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "gfs_sigio") then
+
+   call read_input_sfc_gfs_sfcio_file(localpet)
+
+!-------------------------------------------------------------------------------
+! Read fv3gfs surface data in grib2 format.
+!-------------------------------------------------------------------------------
+
+ elseif (trim(input_type) == "grib2") then
+
+   call read_input_sfc_grib2_file(localpet)
+
+ endif
+
+ end subroutine read_input_sfc_data
+
+!> Create atmospheric esmf fields.
+!!
+!! @author George Gayno NCEP/EMC   
+ subroutine init_atm_esmf_fields
+ 
+ implicit none
+
+ integer                                  :: i, rc
+
+ print*,"- INITIALIZE ATMOSPHERIC ESMF FIELDS."
+
+ print*,"- CALL FieldCreate FOR INPUT GRID 3-D WIND."
+ wind_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1,1/), &
+                                   ungriddedUBound=(/lev_input,3/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID SURFACE PRESSURE."
+ ps_input_grid = ESMF_FieldCreate(input_grid, &
+                                  typekind=ESMF_TYPEKIND_R8, &
+                                  staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID TERRAIN."
+ terrain_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID TEMPERATURE."
+ temp_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ allocate(tracers_input_grid(num_tracers_input))
+
+ do i = 1, num_tracers_input
+   print*,"- CALL FieldCreate FOR INPUT GRID TRACER ", trim(tracers_input(i))
+   tracers_input_grid(i) = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+   if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+     call error_handler("IN FieldCreate", rc)
+ enddo
+
+ print*,"- CALL FieldCreate FOR INPUT GRID DZDT."
+ dzdt_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID U."
+ u_input_grid = ESMF_FieldCreate(input_grid, &
+                                 typekind=ESMF_TYPEKIND_R8, &
+                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                 ungriddedLBound=(/1/), &
+                                 ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID V."
+ v_input_grid = ESMF_FieldCreate(input_grid, &
+                                 typekind=ESMF_TYPEKIND_R8, &
+                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                 ungriddedLBound=(/1/), &
+                                 ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+
+ print*,"- CALL FieldCreate FOR INPUT GRID PRESSURE."
+ pres_input_grid = ESMF_FieldCreate(input_grid, &
+                                   typekind=ESMF_TYPEKIND_R8, &
+                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
+                                   ungriddedLBound=(/1/), &
+                                   ungriddedUBound=(/lev_input/), rc=rc)
+ if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+    call error_handler("IN FieldCreate", rc)
+ 
+ end subroutine init_atm_esmf_fields
+
+!> Create surface input grid esmf fields
+!!
+!! @author George Gayno NCEP/EMC 
+ subroutine init_sfc_esmf_fields
+ 
+ implicit none
 
  integer                         :: rc
 
@@ -582,160 +738,13 @@
    if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__))&
     call error_handler("IN FieldCreate", rc)
  endif
+ end subroutine init_sfc_esmf_fields
 
-!-------------------------------------------------------------------------------
-! Read the tiled 'warm' restart files.
-!-------------------------------------------------------------------------------
-
- if (trim(input_type) == "restart") then
-
-   call read_input_sfc_restart_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the tiled or gaussian history files in netcdf format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "history" .or. trim(input_type) ==  &
-         "gaussian_netcdf") then
-
-   call read_input_sfc_netcdf_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the gaussian history files in nemsio format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "gaussian_nemsio") then
-
-   call read_input_sfc_gaussian_nemsio_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the spectral gfs gaussian history files in nemsio format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "gfs_gaussian_nemsio") then
-
-   call read_input_sfc_gfs_gaussian_nemsio_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read the spectral gfs gaussian history files in sfcio format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "gfs_sigio") then
-
-   call read_input_sfc_gfs_sfcio_file(localpet)
-
-!-------------------------------------------------------------------------------
-! Read fv3gfs surface data in grib2 format.
-!-------------------------------------------------------------------------------
-
- elseif (trim(input_type) == "grib2") then
-
-   call read_input_sfc_grib2_file(localpet)
-
- endif
-
- end subroutine read_input_sfc_data
-
-!---------------------------------------------------------------------------
-! Create atmospheric esmf fields.
-!---------------------------------------------------------------------------
-
- subroutine init_atm_esmf_fields
- 
- implicit none
-
- integer                                  :: i, rc
-
- print*,"- INITIALIZE ATMOSPHERIC ESMF FIELDS."
-
- print*,"- CALL FieldCreate FOR INPUT GRID 3-D WIND."
- wind_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1,1/), &
-                                   ungriddedUBound=(/lev_input,3/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID SURFACE PRESSURE."
- ps_input_grid = ESMF_FieldCreate(input_grid, &
-                                  typekind=ESMF_TYPEKIND_R8, &
-                                  staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID TERRAIN."
- terrain_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID TEMPERATURE."
- temp_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- allocate(tracers_input_grid(num_tracers))
-
- do i = 1, num_tracers
-   print*,"- CALL FieldCreate FOR INPUT GRID TRACER ", trim(tracers_input(i))
-   tracers_input_grid(i) = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
-   if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-     call error_handler("IN FieldCreate", rc)
- enddo
-
- print*,"- CALL FieldCreate FOR INPUT GRID DZDT."
- dzdt_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID U."
- u_input_grid = ESMF_FieldCreate(input_grid, &
-                                 typekind=ESMF_TYPEKIND_R8, &
-                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                 ungriddedLBound=(/1/), &
-                                 ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID V."
- v_input_grid = ESMF_FieldCreate(input_grid, &
-                                 typekind=ESMF_TYPEKIND_R8, &
-                                 staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                 ungriddedLBound=(/1/), &
-                                 ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
-
- print*,"- CALL FieldCreate FOR INPUT GRID PRESSURE."
- pres_input_grid = ESMF_FieldCreate(input_grid, &
-                                   typekind=ESMF_TYPEKIND_R8, &
-                                   staggerloc=ESMF_STAGGERLOC_CENTER, &
-                                   ungriddedLBound=(/1/), &
-                                   ungriddedUBound=(/lev_input/), rc=rc)
- if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldCreate", rc)
- 
- end subroutine init_atm_esmf_fields
-
-!---------------------------------------------------------------------------
-! Read input atmospheric data from spectral gfs (old sigio format).
-! Used prior to July 19, 2017.
-!---------------------------------------------------------------------------
-
+!> Read input atmospheric data from spectral gfs (old sigio format).
+!! 
+!! @note Format used prior to July 19, 2017.
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_gfs_sigio_file(localpet)
 
  use sigio_module
@@ -779,7 +788,7 @@
  lev_input = sighead%levs
  levp1_input = lev_input + 1
 
- if (num_tracers /= sighead%ntrac) then
+ if (num_tracers_input /= sighead%ntrac) then
    call error_handler("WRONG NUMBER OF TRACERS EXPECTED.", 99)
  endif
 
@@ -841,7 +850,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldScatter", rc)
 
- do k = 1, num_tracers
+ do k = 1, num_tracers_input
 
    if (localpet == 0) then
      call sptezm(0,sighead%jcap,4,i_input, j_input, lev_input, sigdata%q(:,:,k), dummy3d, 1)
@@ -970,11 +979,11 @@
 
  end subroutine read_input_atm_gfs_sigio_file
 
-!---------------------------------------------------------------------------
-! Read input atmospheric data from spectral gfs (global gaussian in
-! nemsio format. Starting July 19, 2017).  
-!---------------------------------------------------------------------------
-
+!> Read input atmospheric data from spectral gfs (global gaussian in
+!! nemsio format. Starting July 19, 2017).
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_gfs_gaussian_nemsio_file(localpet)
 
  implicit none
@@ -1056,7 +1065,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
      call error_handler("IN FieldScatter", rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet == 0) then
      print*,"- READ ", trim(tracers_input(n))
@@ -1224,10 +1233,10 @@
 
  end subroutine read_input_atm_gfs_gaussian_nemsio_file
 
-!---------------------------------------------------------------------------
-! Read input grid atmospheric fv3 gaussian nemsio files.
-!---------------------------------------------------------------------------
-
+!> Read input grid atmospheric fv3 gaussian nemsio files.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_gaussian_nemsio_file(localpet)
 
  implicit none
@@ -1318,7 +1327,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldScatter", rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet == 0) then
      print*,"- READ ", trim(tracers_input(n))
@@ -1503,15 +1512,14 @@
 
  end subroutine read_input_atm_gaussian_nemsio_file
 
-!---------------------------------------------------------------------------
-! Read input grid fv3 atmospheric data 'warm' restart files.
-!
-! Routine reads tiled files in parallel.  Tile 1 is read by 
-! localpet 0; tile 2 by localpet 1, etc.  The number of pets
-! must be equal to or greater than the number of tiled files.  
-! Logic only tested with global input data of six tiles.
-!---------------------------------------------------------------------------
-
+!> Read input grid fv3 atmospheric data 'warm' restart files.
+!!
+!! @note Routine reads tiled files in parallel.  Tile 1 is read by 
+!! localpet 0; tile 2 by localpet 1, etc.  The number of pets
+!! must be equal to or greater than the number of tiled files.  
+!! Logic only tested with global input data of six tiles.
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_restart_file(localpet)
 
  implicit none
@@ -1691,7 +1699,7 @@
    call netcdf_err(error, 'opening: '//trim(tilefile) )
  endif
 
- do i = 1, num_tracers
+ do i = 1, num_tracers_input
 
    if (localpet < num_tiles_input_grid) then
      error=nf90_inq_varid(ncid, tracers_input(i), id_var)
@@ -1766,11 +1774,11 @@
 
  end subroutine read_input_atm_restart_file
 
-!---------------------------------------------------------------------------
-! Read fv3 netcdf gaussian history file.  Each task reads a horizontal
-! slice.
-!---------------------------------------------------------------------------
-
+!> Read fv3 netcdf gaussian history file.  Each task reads a horizontal
+!! slice.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_gaussian_netcdf_file(localpet)
 
  use mpi
@@ -2011,7 +2019,7 @@
 
 ! tracers
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (myrank <= max_procs-1) then
      error=nf90_inq_varid(ncid, tracers_input(n), id_var)
@@ -2146,14 +2154,15 @@
 
  end subroutine read_input_atm_gaussian_netcdf_file
 
-!---------------------------------------------------------------------------
-! Read input grid fv3 atmospheric tiled history files in netcdf format.
-!
-! Routine reads tiled files in parallel.  Tile 1 is read by 
-! localpet 0; tile 2 by localpet 1, etc.  The number of pets
-! must be equal to or greater than the number of tiled files.  
-!---------------------------------------------------------------------------
-
+!> Read input grid fv3 atmospheric tiled history files in netcdf
+!! format.
+!!
+!! @note Routine reads tiled files in parallel.  Tile 1 is read by 
+!! localpet 0; tile 2 by localpet 1, etc.  The number of pets
+!! must be equal to or greater than the number of tiled files.  
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_tiled_history_file(localpet)
 
  use mpi
@@ -2216,7 +2225,7 @@
  error = nf90_close(ncid)
 
  print*,'- FILE HAS ', num_tracers_file, ' TRACERS.'
- print*,'- WILL PROCESS ', num_tracers, ' TRACERS.'
+ print*,'- WILL PROCESS ', num_tracers_input, ' TRACERS.'
 
 !---------------------------------------------------------------------------
 ! Initialize esmf atmospheric fields.
@@ -2269,7 +2278,7 @@
       call error_handler("IN FieldScatter", rc)
  enddo
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet < num_tiles_input_grid) then
      print*,"- READ ", trim(tracers_input(n))
@@ -2441,10 +2450,10 @@
 
  end subroutine read_input_atm_tiled_history_file
  
-!---------------------------------------------------------------------------
-! Read input grid atmospheric fv3gfs grib2 files.
-!---------------------------------------------------------------------------
-
+!> Read input grid atmospheric fv3gfs grib2 files.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_atm_grib2_file(localpet)
 
  use wgrib2api
@@ -2462,10 +2471,10 @@
                                           trac_names_grib_1(ntrac_max), &
                                           trac_names_grib_2(ntrac_max), &
                                           trac_names_vmap(ntrac_max), &
-                                          tracers_input_grib_1(num_tracers), &
-                                          tracers_input_grib_2(num_tracers), &
+                                          tracers_input_grib_1(num_tracers_input), &
+                                          tracers_input_grib_2(num_tracers_input), &
                                           tmpstr, & 
-                                          method, tracers_input_vmap(num_tracers), &
+                                          method, tracers_input_vmap(num_tracers_input), &
                                           tracers_default(ntrac_max), vname2
  character (len=500)                   :: metadata
 
@@ -2609,18 +2618,18 @@
    iret = grb2_inq(the_file,inv_file, ':var0_2','_1_84:',lvl_str_space)
    if (iret <= 0) then
      iret = grb2_inq(the_file,inv_file, ':var0_2','_6_0:',lvl_str_space)
-     if (iret <= 0) then
+     if (iret <= 0 ) then 
        iret = grb2_inq(the_file,inv_file, ':var0_2','_1_82:',lvl_str_space)
-       if (iret <= 0 ) then 
+       if (iret <= 0 ) then
          call handle_grib_error(vname, slevs(1),method,value,varnum,rc,var=dummy2d)
        else
          trac_names_grib_2(4) = '_1:82:'
          if (localpet ==0) print*,"- FILE CONTAINS CIMIXR."
-       endif     
+       endif
      else
        trac_names_grib_2(4) = '_6_0'
        if (localpet == 0) print*,"- FILE CONTAINS CICE."
-     endif
+     endif     
    else
      trac_names_grib_2(4)='_1_84:'
      if (localpet == 0) print*,"- FILE CONTAINS SCLIWC."
@@ -2650,7 +2659,8 @@
    if (localpet == 0) print*,"- FILE CONTAINS CLWMR."
  endif
    
- do n = 1, num_tracers
+ print*,"- COUNT NUMBER OF TRACERS TO BE READ IN BASED ON PHYSICS SUITE TABLE"
+ do n = 1, num_tracers_input
 
    vname = tracers_input(n)
 
@@ -2663,7 +2673,9 @@
 
  enddo
 
- if (localpet==0) print*, "- NUMBER OF TRACERS TO BE PROCESSED = ", num_tracers
+ if (localpet==0) then
+    print*, "- NUMBER OF TRACERS IN THE INPUT FILE = ", num_tracers_input
+ endif
 
 !---------------------------------------------------------------------------
 ! Initialize esmf atmospheric fields.
@@ -2705,7 +2717,7 @@
  if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldScatter", rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
 
    if (localpet == 0) print*,"- READ ", trim(tracers_input_vmap(n))
    vname = tracers_input_vmap(n)
@@ -2879,8 +2891,8 @@ if (.not. isnative) then
    if(ESMF_logFoundError(rcToCheck=rc,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
     call error_handler("IN FieldGet", rc)
  
-    if (localpet == 0) print*,"- CALL FieldGet FOR TRACERS."
-    do n=1,num_tracers
+  if (localpet == 0) print*,"- CALL FieldGet FOR TRACERS."
+  do n=1,num_tracers_input
     nullify(qptr)
     call ESMF_FieldGet(tracers_input_grid(n), &
             farrayPtr=qptr, rc=rc)
@@ -2986,11 +2998,13 @@ else
  
  end subroutine read_input_atm_grib2_file
 
-!---------------------------------------------------------------------------
-! Read input grid surface data from a spectral gfs gaussian sfcio file.
-! Prior to July 19, 2017.
-!---------------------------------------------------------------------------
-
+!> Read input grid surface data from a spectral gfs gaussian sfcio
+!! file.
+!!
+!! @note Prior to July 19, 2017.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_sfc_gfs_sfcio_file(localpet)
  
  use sfcio_module
@@ -3208,11 +3222,13 @@ else
 
  end subroutine read_input_sfc_gfs_sfcio_file
 
-!---------------------------------------------------------------------------
-! Read input grid surface data from a spectral gfs gaussian nemsio file.
-! Format used by gfs starting July 19, 2017.
-!---------------------------------------------------------------------------
-
+!> Read input grid surface data from a spectral gfs gaussian nemsio
+!! file.
+!!
+!! @note Format used by gfs starting July 19, 2017.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_sfc_gfs_gaussian_nemsio_file(localpet)
  
  implicit none
@@ -3558,10 +3574,10 @@ else
 
  end subroutine read_input_sfc_gfs_gaussian_nemsio_file
 
-!---------------------------------------------------------------------------
-! Read input grid surface data from an fv3 gaussian nemsio file.
-!---------------------------------------------------------------------------
-
+!> Read input grid surface data from an fv3 gaussian nemsio file.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_sfc_gaussian_nemsio_file(localpet)
 
  implicit none
@@ -3907,10 +3923,10 @@ else
 
  end subroutine read_input_sfc_gaussian_nemsio_file
 
-!---------------------------------------------------------------------------
-! Read input grid surface data tiled warm 'restart' files.
-!---------------------------------------------------------------------------
-
+!> Read input grid surface data from fv3 tiled warm 'restart' files.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_sfc_restart_file(localpet)
 
  implicit none
@@ -4223,11 +4239,11 @@ else
 
  end subroutine read_input_sfc_restart_file
 
-!---------------------------------------------------------------------------
-! Read input grid surface data from tiled 'history' files (netcdf) or 
-! gaussian netcdf files.
-!---------------------------------------------------------------------------
-
+!> Read input grid surface data from tiled 'history' files (netcdf) or 
+!! gaussian netcdf files.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_sfc_netcdf_file(localpet)
 
  implicit none
@@ -4585,14 +4601,13 @@ else
 
  end subroutine read_input_sfc_netcdf_file
 
-!---------------------------------------------------------------------------
-! Read surface data from an fv3gfs grib2 file.
-!---------------------------------------------------------------------------
-
+!> Read input grid surface data from a grib2 file.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author Larissa Reames 
  subroutine read_input_sfc_grib2_file(localpet)
 
    use wgrib2api
-   use grib2_util, only    : to_upper
    use program_setup, only : vgtyp_from_climo, sotyp_from_climo
    use model_grid, only    : input_grid_type
    use search_util
@@ -4605,20 +4620,19 @@ else
    character(len=250)                    :: the_file
    character(len=250)                    :: geo_file
    character(len=20)                     :: vname, vname_file,slev
-
-   character(len=50)                      :: method
-
+   character(len=50)                     :: method
+   character(len=20)                     :: to_upper
+ 
    integer                               :: rc, varnum, iret, i, j,k
    integer                               :: ncid2d, varid, varsize
-   integer, parameter                    :: icet_default = 265.0
 
    logical                               :: exist, rap_latlon
 
    real(esmf_kind_r4)                    :: value
 
-   real(esmf_kind_r4), allocatable       :: dummy2d(:,:),tsk_save(:,:),icec_save(:,:)
+   real(esmf_kind_r4), allocatable       :: dummy2d(:,:),icec_save(:,:)
    real(esmf_kind_r4), allocatable       :: dummy1d(:)
-   real(esmf_kind_r8), allocatable       :: dummy2d_8(:,:),dummy2d_82(:,:)
+   real(esmf_kind_r8), allocatable       :: dummy2d_8(:,:),dummy2d_82(:,:),tsk_save(:,:)
    real(esmf_kind_r8), allocatable       :: dummy3d(:,:,:), dummy3d_stype(:,:,:)
    integer(esmf_kind_i4), allocatable    :: slmsk_save(:,:)
    integer(esmf_kind_i8), allocatable    :: dummy2d_i(:,:)
@@ -4748,7 +4762,7 @@ if (localpet == 0) then
      do i = 1, i_input
        if(dummy2d(i,j) < 0.5_esmf_kind_r4) dummy2d(i,j)=0.0_esmf_kind_r4
        if(icec_save(i,j) > 0.15_esmf_kind_r4) then 
-         if (dummy2d(i,j) == 0.0_esmf_kind_r4) print*, "CONVERTING WATER TO SEA/LAKE ICE AT ", i, j
+         !if (dummy2d(i,j) == 0.0_esmf_kind_r4) print*, "CONVERTING WATER TO SEA/LAKE ICE AT ", i, j
          dummy2d(i,j) = 2.0_esmf_kind_r4
        endif
      enddo
@@ -4847,7 +4861,7 @@ if (localpet == 0) then
    print*,"- READ SKIN TEMPERATURE."
    rc = grb2_inq(the_file, inv_file, ':TMP:',':surface:', data2=dummy2d)
    if (rc <= 0 ) call error_handler("READING SKIN TEMPERATURE.", rc)
-   tsk_save(:,:) = dummy2d
+   tsk_save(:,:) = real(dummy2d,esmf_kind_r8)
    dummy2d_8 = real(dummy2d,esmf_kind_r8)
    do j = 1, j_input
      do i = 1, i_input
@@ -4928,7 +4942,6 @@ if (localpet == 0) then
            if(dummy2d(i,j) == 17.0_esmf_kind_r4) dummy1d(17) = 0.0_esmf_kind_r4
            dummy2d(i,j) = real(MAXLOC(dummy1d, 1),esmf_kind_r4)
          endif
-!         if(slmsk_save(i,j) == 2) dummy2d(i,j) = 0.0_esmf_kind_r4
        enddo
      enddo
    endif
@@ -5265,6 +5278,7 @@ if (localpet == 0) then
         dummy2d(:,:) = 0.0_esmf_kind_r4
       endif
     endif
+   call check_cnwat(dummy2d)
    dummy2d_8= real(dummy2d,esmf_kind_r8)
    print*,'cnwat ',maxval(dummy2d),minval(dummy2d)
  endif
@@ -5389,7 +5403,6 @@ if (localpet == 0) then
      if (dummy2d(i,j) == 15.0_esmf_kind_r4 .and. slmsk_save(i,j) == 2) then
        dummy2d(i,j) = 0.0_esmf_kind_r4
      endif
-
      enddo
    enddo
    endif     
@@ -5424,14 +5437,7 @@ if (localpet == 0) then
    vname = "soilt"
    vname_file = ":TSOIL:"
    call read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
-   do k=1,lsoil_input
-     do j = 1, j_input
-       do i = 1, i_input
-         if (slmsk_save(i,j) == 0_esmf_kind_i4 ) dummy3d(i,j,k) = tsk_save(i,j)
-         if (slmsk_save(i,j) == 2_esmf_kind_i4 ) dummy3d(i,j,k) = icet_default
-       enddo
-     enddo
-   enddo
+   call check_soilt(dummy3d,slmsk_save,tsk_save)
    print*,'soilt ',maxval(dummy3d),minval(dummy3d)
 
    deallocate(tsk_save, slmsk_save)
@@ -5447,11 +5453,11 @@ if (localpet == 0) then
  
  end subroutine read_input_sfc_grib2_file
    
-!---------------------------------------------------------------------------
-! Read nst data from these netcdf formatted fv3 files: tiled history,
-! tiled warm restart, and gaussian history.
-!---------------------------------------------------------------------------
-
+!> Read nst data from these netcdf formatted fv3 files: tiled history,
+!! tiled warm restart, and gaussian history.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_nst_netcdf_file(localpet)
 
  implicit none
@@ -5727,13 +5733,15 @@ if (localpet == 0) then
 
  end subroutine read_input_nst_netcdf_file
 
-!--------------------------------------------------------------------------
-! Read input grid nst data from fv3 gaussian nemsio history file or
-! spectral GFS nemsio file.  The spectral GFS nst data is in a separate
-! file from the surface data.  The fv3 surface and nst data are in a
-! single file.
-!--------------------------------------------------------------------------
-
+!> Read input grid nst data from fv3 gaussian nemsio history file or
+!! spectral GFS nemsio file.
+!!
+!! @note The spectral GFS nst data is in a separate file from
+!! the surface data.  The fv3 surface and nst data are in a
+!! single file.
+!!
+!! @param[in] localpet  ESMF local persistent execution thread 
+!! @author George Gayno NCEP/EMC   
  subroutine read_input_nst_nemsio_file(localpet)
 
  implicit none
@@ -5999,6 +6007,16 @@ if (localpet == 0) then
 
  end subroutine read_input_nst_nemsio_file
 
+!> Read a record from a netcdf file
+!!
+!! @param [in] field  name of field to be read 
+!! @param [in] tile_num  grid tile number
+!! @param [in] imo i-dimension of field
+!! @param [in] jmo j-dimension of field
+!! @param [in] lmo number of vertical levels of field
+!! @param [out] sfcdata 1-d array containing field data
+!! @param [out] sfcdata_3d  3-d array containing field data
+!! @author George Gayno NCEP/EMC   
  SUBROUTINE READ_FV3_GRID_DATA_NETCDF(FIELD,TILE_NUM,IMO,JMO,LMO, &
                                       SFCDATA, SFCDATA_3D)
 
@@ -6037,10 +6055,15 @@ if (localpet == 0) then
 
  END SUBROUTINE READ_FV3_GRID_DATA_NETCDF
  
- !---------------------------------------------------------------------------
-! Read winds from a grib2 file
-!---------------------------------------------------------------------------
-
+!> Read winds from a grib2 file.  Rotate winds
+!! to be earth relative if necessary.
+!!
+!! @param [in] file  grib2 file to be read
+!! @param [in] inv   grib2 inventory file
+!! @param [inout] u  u-component wind
+!! @param [inout] v  v-component wind
+!! @param[in] localpet  ESMF local persistent execution thread
+!! @author Larissa Reames
  subroutine read_winds(file,inv,u,v,localpet)
 
  use wgrib2api
@@ -6062,11 +6085,11 @@ if (localpet == 0) then
  real(esmf_kind_r8)                      :: d2r
 
  integer                                 :: varnum_u, varnum_v, vlev, & !ncid, id_var, &
-                                            error, iret, i,istr
+                                            error, iret, istr
 
  character(len=20)                       :: vname
  character(len=50)                       :: method_u, method_v
- character(len=250)                      :: file_coord, cmdline_msg
+ character(len=250)                      :: file_coord
  character(len=10000)                    :: temp_msg
 
  d2r=acos(-1.0_esmf_kind_r8) / 180.0_esmf_kind_r8
@@ -6197,10 +6220,9 @@ if (localpet == 0) then
 
 end subroutine read_winds
 
-!---------------------------------------------------------------------------
-! Convert from 2-d to 3-d winds.
-!---------------------------------------------------------------------------
-
+!> Convert winds from 2-d to 3-d components.
+!!
+!! @author George Gayno NCEP/EMC   
  subroutine convert_winds
 
  implicit none
@@ -6264,14 +6286,19 @@ end subroutine read_winds
 
  end subroutine convert_winds
  
-!---------------------------------------------------------------------------
-! Compute grid rotation angle for non-latlon grids
-!---------------------------------------------------------------------------
-
-!# NG The original gridrot subroutine was specific to polar stereographic grids.
-! We need to compute it for Lambert Conformal grids. So we need lat1,lat2
-! Note this follows the ncl_ncarg source code
-! ncl_ncarg-6.6.2/ni/src/ncl/GetGrids.c
+!> Compute grid rotation angle for non-latlon grids.
+!!
+!! @note The original gridrot subroutine was specific to polar
+!! stereographic grids.  We need to compute it for Lambert Conformal
+!! grids. So we need lat1,lat2.  This follows the ncl_ncarg source
+!! code: ncl_ncarg-6.6.2/ni/src/ncl/GetGrids.c
+!!
+!! @param [in] lov  orientation angle
+!! @param [in] latin1  first tangent latitude
+!! @param [in] latin2  second tangent latitude
+!! @param [in] lon     longitude
+!! @param [inout] rot  rotation angle
+!! @author Larissa Reames
 subroutine gridrot(lov,latin1,latin2,lon,rot)
 
   use model_grid, only                : i_input,j_input
@@ -6304,9 +6331,15 @@ subroutine gridrot(lov,latin1,latin2,lon,rot)
 
 end subroutine gridrot
 
-! Subroutine calcalpha_rotlatlon calculates rotation angle
-! specific to rotated latlon grids, needed to convert to
-! earth-relative winds
+!> Calculate rotation angle for rotated latlon grids.
+!! Needed to convert to earth-relative winds.
+!!
+!! @param [in] latgrid  grid latitudes
+!! @param [in] longrid  grid longitudes
+!! @param [in] cenlat   center latitude
+!! @param [in] cenlon   center longitude
+!! @param [out] alpha   grid rotation angle
+!! @author Larissa Reames
 subroutine calcalpha_rotlatlon(latgrid,longrid,cenlat,cenlon,alpha)
 
   use model_grid, only                : i_input,j_input
@@ -6342,7 +6375,20 @@ subroutine calcalpha_rotlatlon(latgrid,longrid,cenlat,cenlon,alpha)
   alpha = -asin(sinalpha)/D2R
   ! returns alpha in degrees
 end subroutine calcalpha_rotlatlon
- 
+
+!> Handle GRIB2 read error based on the user selected
+!! method in the varmap file.
+!!
+!! @param [in] vname  grib2 variable name
+!! @param [in] lev    grib2 variable level
+!! @param [in] method  how missing data is handled
+!! @param [in] value   fill value for missing data
+!! @param [in] varnum  grib2 variable number
+!! @param [inout] iret  return status code
+!! @param [inout] var   4-byte array of corrected data
+!! @param [inout] var8  8-byte array of corrected data
+!! @param [inout] var3d 3-d array of corrected data
+!! @author Larissa Reames
 subroutine handle_grib_error(vname,lev,method,value,varnum, iret,var,var8,var3d)
 
   use, intrinsic :: ieee_arithmetic
@@ -6396,6 +6442,15 @@ subroutine handle_grib_error(vname,lev,method,value,varnum, iret,var,var8,var3d)
 
 end subroutine handle_grib_error
 
+!> Read soil temperature and soil moisture fields from a GRIB2 file.
+!!
+!! @param [in] the_file      grib2 file name
+!! @param [in] inv_file      grib2 inventory file name
+!! @param [in] vname         variable name in varmap table
+!! @param [in] vname_file    variable name in grib2 file
+!! @param [inout] dummy3d    array of soil data
+!! @param [out] rc           read error status code
+!! @author George Gayno NCEP/EMC   
 subroutine read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
   
   use wgrib2api
@@ -6455,6 +6510,9 @@ subroutine read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
 
  end subroutine read_grib_soil
 
+!> Free up memory associated with atm data.
+!!
+!! @author George Gayno NCEP/EMC   
  subroutine cleanup_input_atm_data
 
  implicit none
@@ -6470,13 +6528,16 @@ subroutine read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
  call ESMF_FieldDestroy(wind_input_grid, rc=rc)
  call ESMF_FieldDestroy(ps_input_grid, rc=rc)
 
- do n = 1, num_tracers
+ do n = 1, num_tracers_input
    call ESMF_FieldDestroy(tracers_input_grid(n), rc=rc)
  enddo
  deallocate(tracers_input_grid)
 
  end subroutine cleanup_input_atm_data
 
+!> Free up memory associated with nst data.
+!!
+!! @author George Gayno NCEP/EMC   
  subroutine cleanup_input_nst_data
 
  implicit none
@@ -6507,6 +6568,9 @@ subroutine read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
 
  end subroutine cleanup_input_nst_data
 
+!> Free up memory associated with sfc data.
+!!
+!! @author George Gayno NCEP/EMC   
  subroutine cleanup_input_sfc_data
 
  implicit none
@@ -6552,12 +6616,12 @@ subroutine read_grib_soil(the_file,inv_file,vname,vname_file,dummy3d,rc)
 
  end subroutine cleanup_input_sfc_data
 
-! Jili Dong add sort subroutine 
-! quicksort.f -*-f90-*-
-! Author: t-nissie
-! License: GPLv3
-! Gist: https://gist.github.com/t-nissie/479f0f16966925fa29ea
+!> Sort an array of values.
 !!
+!! @param a      the sorted array
+!! @param first  the first value of sorted array
+!! @param last   the last value of sorted array
+!! @author Jili Dong NOAA/EMC
 recursive subroutine quicksort(a, first, last)
   implicit none
   real*8  a(*), x, t
@@ -6582,5 +6646,64 @@ recursive subroutine quicksort(a, first, last)
   if (first < i-1) call quicksort(a, first, i-1)
   if (j+1 < last)  call quicksort(a, j+1, last)
 end subroutine quicksort
+
+!> Check for and replace certain values in soil temperature.
+!> At open water points (landmask=0) use skin temperature as
+!> a filler value. At land points (landmask=1) with excessive
+!> soil temperature, replace soil temperature with skin temperature. 
+!> In GEFSv12.0 data there are some erroneous missing values at
+!> land points which this corrects. At sea ice points (landmask=2),
+!> store a default ice column temperature because grib2 files do not 
+!> have ice column temperature which FV3 expects at these points.
+!!
+!! @param soilt    [inout] 3-dimensional soil temperature arrray
+!! @param landmask [in]    landmask of the input grid
+!! @param skint    [in]    2-dimensional skin temperature array
+!! @author Larissa Reames CIMMS/NSSL
+
+subroutine check_soilt(soilt, landmask, skint)
+  implicit none
+  real(esmf_kind_r8), intent(inout) ::  soilt(i_input,j_input,lsoil_input)
+  real(esmf_kind_r8), intent(in)    ::  skint(i_input,j_input)
+  integer(esmf_kind_i4), intent(in)    ::  landmask(i_input,j_input)
+  
+  integer                           :: i, j, k
+
+  do k=1,lsoil_input
+    do j = 1, j_input
+      do i = 1, i_input
+        if (landmask(i,j) == 0_esmf_kind_i4 ) then 
+          soilt(i,j,k) = skint(i,j)
+        else if (landmask(i,j) == 1_esmf_kind_i4 .and. soilt(i,j,k) > 350.0_esmf_kind_r8) then 
+          soilt(i,j,k) = skint(i,j)
+        else if (landmask(i,j) == 2_esmf_kind_i4 ) then 
+          soilt(i,j,k) = ICET_DEFAULT
+        endif
+      enddo
+    enddo
+  enddo
+end subroutine check_soilt
+
+!> When using GEFS data, some points on the target grid have 
+!> unreasonable canpy moisture content, so zero out any 
+!> locations with unrealistic canopy moisture values (>0.5).
+!!
+!! @param cnwat [input] 2-dimensional canopy moisture content
+!! @author Larissa Reames CIMMS/NSSL
+
+subroutine check_cnwat(cnwat)
+  implicit none 
+  real(esmf_kind_r4), intent(inout) :: cnwat(i_input,j_input)
+  
+  real(esmf_kind_r4)                :: max_cnwat = 0.5
+  
+  integer :: i, j
+
+  do i = 1,i_input
+    do j = 1,j_input
+      if (cnwat(i,j) .gt. max_cnwat) cnwat(i,j) = 0.0_esmf_kind_r4
+    enddo
+  enddo
+end subroutine check_cnwat
 
  end module input_data
