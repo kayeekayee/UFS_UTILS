@@ -138,6 +138,7 @@
  public :: quicksort
  public :: convert_winds
  public :: init_sfc_esmf_fields
+ public :: dint2p
  
  contains
 
@@ -2482,10 +2483,11 @@
  integer                               :: ii,jj
  integer                               :: rc, clb(3), cub(3)
  integer                               :: vlev, iret,varnum
-
+ integer                               :: all_empty, o3n
  integer                               :: len_str
- logical                               :: lret
+ integer                               :: is_missing, intrp_ier, done_print
 
+ logical                               :: lret
  logical                               :: conv_omega=.false., &
                                           hasspfh=.true., &
                                           isnative=.false.
@@ -2501,7 +2503,8 @@
  real(esmf_kind_r8), parameter         :: p0 = 100000.0
  real(esmf_kind_r8), allocatable       :: dummy3d_col_in(:),dummy3d_col_out(:)
  real(esmf_kind_r8), parameter         :: intrp_missing = -999.0 
- integer                               :: is_missing, intrp_ier
+ real(esmf_kind_r4), parameter         :: lev_no_tr_fill = 20000.0
+ real(esmf_kind_r4), parameter         :: lev_no_o3_fill = 40000.0
 
  
  tracers(:) = "NULL"
@@ -2677,6 +2680,7 @@
    tracers_input_grib_2(n) = trac_names_grib_2(i)
    tracers_input_vmap(n)=trac_names_vmap(i)
    tracers(n)=tracers_default(i)
+   if(trim(tracers(n)) .eq. "o3mr") o3n = n
 
  enddo
 
@@ -2740,26 +2744,48 @@
    if (localpet == 0) then
      vname = trim(tracers_input_grib_1(n))
      vname2 = trim(tracers_input_grib_2(n))
-     
+     iret = grb2_inq(the_file,inv_file,vname,lvl_str_space,vname2)
+
+     ! Check to see if file has any data for this tracer
+     if (iret == 0) then
+       all_empty = 1
+     else
+       all_empty = 0
+     endif
+ 
      is_missing = 0
      do vlev = 1, lev_input
       iret = grb2_inq(the_file,inv_file,vname,slevs(vlev),vname2,data2=dummy2d)
      
       if (iret <= 0) then
-        if (trim(method) .eq. 'intrp') then
+        if (trim(method) .eq. 'intrp' .and. all_empty == 0) then
           dummy2d = intrp_missing 
           is_missing = 1 
         else
+          ! Abort if input data has some data for current tracer, but has
+          ! missing data below 200 mb/ above 400mb
+            if (all_empty == 0 .and. n == o3n) then
+              if (rlevs(vlev) .lt. lev_no_o3_fill) &
+                call error_handler("TRACER "//trim(tracers(n))//" HAS MISSING DATA AT "//trim(slevs(vlev))//&
+                  ". SET MISSING VARIABLE CONDITION TO 'INTRP' TO AVOID THIS ERROR", 1)
+            elseif (all_empty == 0 .and. n .ne. o3n) then 
+              if (rlevs(vlev) .gt. lev_no_tr_fill) &
+                call error_handler("TRACER "//trim(tracers(n))//" HAS MISSING DATA AT "//trim(slevs(vlev))//&
+                  ". SET MISSING VARIABLE CONDITION TO 'INTRP' TO AVOID THIS ERROR.", 1)
+            endif 
+          ! If entire array is empty and method is set to intrp, switch method to fill
+          if (trim(method) .eq. 'intrp' .and. all_empty == 1) method='set_to_fill' 
+
           call handle_grib_error(vname, slevs(vlev),method,value,varnum,iret,var=dummy2d)
           if (iret==1) then ! missing_var_method == skip or no entry
             if (trim(vname2)=="_1_0:" .or. trim(vname2) == "_1_1:" .or.  &
                 trim(vname2) == ":14:192:") then
-              call error_handler("READING IN "//trim(vname)//" AT LEVEL "//trim(slevs(vlev))&
+              call error_handler("READING IN "//trim(tracers(n))//" AT LEVEL "//trim(slevs(vlev))&
                         //". SET A FILL VALUE IN THE VARMAP TABLE IF THIS ERROR IS NOT DESIRABLE.",iret)
             endif
           endif
         endif ! method intrp
-      endif
+      endif !iret<=0
       
       if (n==1 .and. .not. hasspfh) then 
         call rh2spfh(dummy2d,rlevs(vlev),dummy3d(:,:,vlev))
@@ -2767,30 +2793,43 @@
 
        print*,'tracer ',vlev, maxval(dummy2d),minval(dummy2d)
        dummy3d(:,:,vlev) = real(dummy2d,esmf_kind_r8)
-     enddo
+     enddo !vlev
 ! Jili Dong interpolation for missing levels 
      if (is_missing .gt. 0 .and. trim(method) .eq. 'intrp') then
-         print *,'intrp tracer '//trim(vname)
+       print *,'intrp tracer '//trim(tracers(n))
+       done_print = 0
        do jj = 1, j_input
          do ii = 1, i_input
-             dummy3d_col_in=dummy3d(ii,jj,:)
-             call dint2p(rlevs,dummy3d_col_in,lev_input,rlevs,dummy3d_col_out,    &
+           dummy3d_col_in=dummy3d(ii,jj,:)
+           call dint2p(rlevs,dummy3d_col_in,lev_input,rlevs,dummy3d_col_out,    &
                         lev_input, 2, intrp_missing, intrp_ier) 
-             if (intrp_ier .gt. 0) then
-               print *,'intrp failed'
-               stop
-             endif
-             if (any(dummy3d_col_out .eq. intrp_missing)) then
-               print *,'intrp failed and no extrt performed'
-               stop
-             endif
-! zero out negative tracers from interpolation/extrapolation
-             where(dummy3d_col_out .lt. 0.0)  dummy3d_col_out = 0.0
-             dummy3d(ii,jj,:)=dummy3d_col_out
-         end do
-       end do
-     end if 
-   endif
+           if (intrp_ier .gt. 0) call error_handler("Interpolation failed.",intrp_ier)
+           dummy3d(ii,jj,:)=dummy3d_col_out
+         enddo
+       enddo
+       do vlev=1,lev_input
+         dummy2d = dummy3d(:,:,n) 
+         if (any(dummy2d .eq. intrp_missing)) then 
+           ! If we're outside the appropriate region, don't fill but error instead
+           if (n == o3n .and. rlevs(vlev) .lt. lev_no_o3_fill) then
+             call error_handler("TRACER "//trim(tracers(n))//" HAS MISSING DATA AT "//trim(slevs(vlev)),1)
+           elseif (n .ne. o3n .and. rlevs(vlev) .gt. lev_no_tr_fill) then
+             call error_handler("TRACER "//trim(tracers(n))//" HAS MISSING DATA AT "//trim(slevs(vlev)),1)
+           else ! we're okay to fill missing data with provided fill value
+             if (done_print .eq. 0) then
+               print*, "Pressure out of range of existing data. Defaulting to fill value."
+               done_print = 1
+             end if !done print
+             where(dummy2d .eq. intrp_missing) dummy2d = value
+             dummy3d(:,:,vlev) = dummy2d
+           end if !n & lev
+         endif ! intrp_missing
+         ! zero out negative tracers from interpolation/extrapolation
+         where(dummy3d(:,:,vlev) .lt. 0.0)  dummy3d(:,:,vlev) = 0.0
+         print*,'tracer af intrp',vlev, maxval(dummy3d(:,:,vlev)),minval(dummy3d(:,:,vlev))
+       end do !nlevs do
+     end if !if intrp
+   endif !localpet == 0
 
    if (localpet == 0) print*,"- CALL FieldScatter FOR INPUT ", trim(tracers_input_vmap(n))
    call ESMF_FieldScatter(tracers_input_grid(n), dummy3d, rootpet=0, rc=rc)
@@ -6466,6 +6505,10 @@ subroutine handle_grib_error(vname,lev,method,value,varnum, iret,var,var8,var3d)
     call error_handler("READING "//trim(vname)// " at level "//lev//". TO MAKE THIS NON- &
                         FATAL, CHANGE STOP TO SKIP FOR THIS VARIABLE IN YOUR VARMAP &
                         FILE.", iret)
+  elseif (trim(method) == "intrp") then
+    print*, "WARNING: ,"//trim(vname)//" NOT AVAILABLE AT LEVEL "//trim(lev)// &
+          ". WILL INTERPOLATE INTERSPERSED MISSING LEVELS AND/OR FILL MISSING"//&
+          " LEVELS AT EDGES."
   else
     call error_handler("ERROR USING MISSING_VAR_METHOD. PLEASE SET VALUES IN" // &
                        " VARMAP TABLE TO ONE OF: set_to_fill, set_to_NaN,"// &
@@ -6748,21 +6791,23 @@ end subroutine check_cnwat
 !> caution. The routine is mostly for GFSV16 combined grib2 input when spfh has
 !> missing levels in low and mid troposphere from U/T/HGT/DZDT. 
 !!
-!! @param ppin     [in] 1d input pres levs
-!! @param xxin     [in] 1d input tracer
-!! @param npin     [in] number of input levs 
-!! @param ppout    [in] 1d target pres levs 
-!! @param xxout    [out] 1d interpolated tracer
-!! @param npout    [in] number of target levs 
-!! @param linlog   [in] interp method.1:linear;not 1:log;neg:extrp allowed
-!! @param xmsg     [in] fill values of missing levels (-999.0)
-!! @param ier      [out] error status. non 0: failed interpolation
-!! @author NCL code for pressure level interpolation
-!! @author adopted by Jili Dong EMC for chgres_cube 
+!! @param [in] ppin  1d input pres levs
+!! @param [in] xxin  1d input tracer
+!! @param [in] npin  number of input levs 
+!! @param [in] ppout 1d target pres levs 
+!! @param [out] xxout 1d interpolated tracer
+!! @param [in] npout number of target levs 
+!! @param [in] linlog interp method.1:linear;not 1:log;neg:extrp allowed
+!! @param [in] xmsg  fill values of missing levels (-999.0)
+!! @param [out] ier  error status. non 0: failed interpolation
+!! @author Jili Dong NCEP/EMC  
+!! @date 2021/07/30
 
 SUBROUTINE DINT2P(PPIN,XXIN,NPIN,PPOUT,XXOUT,NPOUT   &
                       ,LINLOG,XMSG,IER)
       IMPLICIT NONE
+
+! NCL code for pressure level interpolation
 !
 ! This code was designed for one simple task. It has since
 ! been mangled and abused for assorted reasons. For example,
@@ -6932,7 +6977,8 @@ SUBROUTINE DINT2P(PPIN,XXIN,NPIN,PPOUT,XXOUT,NPOUT   &
                           PB = LOG(POUT(NP))
                           PC = LOG(P(N2))
                           SLOPE = (X(N1)-X(N2))/ (PA-PC)
-                          XOUT(NP) = X(N1) + SLOPE* (PB-PC)
+                          !XOUT(NP) = X(N1) + SLOPE* (PB-PC) !bug fixed below
+                          XOUT(NP) = X(N1) + SLOPE* (PB-PA)
                       END IF
                   END IF
               END DO
