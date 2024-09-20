@@ -1,4 +1,3 @@
 [submodule "ccpp"]
 	path = ccpp-physics
-	url = https://github.com/kayeekayee/ccpp-physics-ufs
-	branch = 2024aug5_89ddce7_ufs_utils
+	url = https://github.com/ufs-community/ccpp-physics.git
