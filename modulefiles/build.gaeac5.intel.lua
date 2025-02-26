@@ -1,17 +1,17 @@
 help([[
-Load environment to compile UFS_UTILS on Jet using Intel
+Load environment to compile UFS_UTILS on Gaea using Intel
 ]])
 
-hpss_ver=os.getenv("hpss_ver") or ""
-load(pathJoin("hpss", hpss_ver))
+prepend_path("MODULEPATH", "/sw/rdtn/modulefiles")
+load("hsi")
 
-prepend_path("MODULEPATH", "/contrib/spack-stack/spack-stack-1.6.0/envs/unified-env-rocky8/install/modulefiles/Core")
+prepend_path("MODULEPATH", "/ncrc/proj/epic/spack-stack/spack-stack-1.6.0/envs/unified-env/install/modulefiles/Core")
 
-stack_intel_ver=os.getenv("stack_intel_ver") or "2021.5.0"
+stack_intel_ver=os.getenv("stack_intel_ver") or "2023.2.0"
 load(pathJoin("stack-intel", stack_intel_ver))
 
-stack_impi_ver=os.getenv("stack_impi_ver") or "2021.5.1"
-load(pathJoin("stack-intel-oneapi-mpi", stack_impi_ver))
+stack_cray_mpich_ver=os.getenv("stack_cray_mpich_ver") or "8.1.28"
+load(pathJoin("stack-cray-mpich", stack_cray_mpich_ver))
 
 cmake_ver=os.getenv("cmake_ver") or "3.23.1"
 load(pathJoin("cmake", cmake_ver))
@@ -34,7 +34,7 @@ load(pathJoin("sp", sp_ver))
 w3emc_ver=os.getenv("w3emc_ver") or "2.10.0"
 load(pathJoin("w3emc", w3emc_ver))
 
--- Uncomment when CHGRES_ALL is ON.
+-- Uncomment when CHGRES_ALL is ON
 --sfcio_ver=os.getenv("sfcio_ver") or "1.4.1"
 --load(pathJoin("sfcio", sfcio_ver))
 
@@ -63,3 +63,4 @@ nco_ver=os.getenv("nco_ver") or "5.0.6"
 load(pathJoin("nco", nco_ver))
 
 whatis("Description: UFS_UTILS build environment")
+
